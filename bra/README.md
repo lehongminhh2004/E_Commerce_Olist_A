@@ -2,8 +2,6 @@
 
 ### *Streamlit Dashboard for Business, Logistics & Customer Insights*
 
-### *A Data Analyst Portfolio Project*
-
 ## 📌 1. Giới thiệu dự án
 
 Dự án xây dựng một **Streamlit Dashboard** phân tích dữ liệu từ **Olist
@@ -11,8 +9,7 @@ Dự án xây dựng một **Streamlit Dashboard** phân tích dữ liệu từ 
 khách hàng, 3k sellers và dữ liệu logistics thực tế.
 
 **Mục tiêu:** - Phân tích hiệu suất kinh doanh - Đánh giá vận hành giao
-hàng - Phân tích trải nghiệm khách hàng - Tạo sản phẩm portfolio đạt
-chuẩn Data Analyst
+hàng - Phân tích trải nghiệm khách hàng
 
 ## 🎯 2. Mục tiêu phân tích (Business Questions)
 
@@ -145,8 +142,3 @@ Phân tích mối liên hệ giữa giao trễ và review score.
 -   Anomaly detection logistics\
 -   Dự báo doanh thu\
 -   Giao diện custom theme
-
-## 👨‍💻 10. Tác giả
-
-Lê Hồng Minh\
-Data Analyst Portfolio Project
