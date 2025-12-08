@@ -94,6 +94,27 @@ def get_base_tables() -> dict:
         orders_enriched["price_total"].fillna(0) + orders_enriched["freight_total"].fillna(0)
     )
 
+        # ===== COST & PROFIT (dựa trên dữ liệu thật) =====
+    # Shipping cost thật: freight_total
+    orders_enriched["shipping_cost"] = orders_enriched["freight_total"].fillna(0)
+
+    # Product revenue: chỉ phần giá sản phẩm (chưa tính freight)
+    orders_enriched["product_revenue"] = orders_enriched["price_total"].fillna(0)
+
+    # Giả định đơn giản: profit sau shipping = product_revenue - shipping_cost
+    # (vì không có COGS thật trong dataset)
+    orders_enriched["profit_after_shipping"] = (
+        orders_enriched["product_revenue"] - orders_enriched["shipping_cost"]
+    )
+
+    # Profit margin sau shipping trên tổng revenue (price + freight)
+    orders_enriched["profit_margin_after_shipping"] = np.where(
+        orders_enriched["revenue"] > 0,
+        orders_enriched["profit_after_shipping"] / orders_enriched["revenue"],
+        np.nan,
+    )
+
+
     # Thời gian giao hàng (days)
     orders_enriched["delivery_time_days"] = (
         orders_enriched["order_delivered_customer_date"]
@@ -348,33 +369,90 @@ def get_delivery_data(start_date=None, end_date=None, states=None):
     base = get_base_tables()
     df = base["orders_enriched"].copy()
 
-    # FILTER
+    # ----- FILTER -----
     if start_date is not None:
         df = df[df["order_purchase_timestamp"] >= pd.to_datetime(start_date)]
     if end_date is not None:
-        df = df[df["order_purchase_timestamp"] < pd.to_datetime(end_date) + pd.Timedelta(days=1)]
+        df = df[
+            df["order_purchase_timestamp"]
+            < pd.to_datetime(end_date) + pd.Timedelta(days=1)
+        ]
     if states:
         df = df[df["customer_state"].isin(states)]
 
+    # Chỉ lấy đơn đã giao + có delivery_time_days
     delivered = df[df["order_status"] == "delivered"].copy()
     delivered = delivered[~delivered["delivery_time_days"].isna()].copy()
 
+    # Nếu không có dữ liệu thì trả về khung rỗng, tránh lỗi
+    if delivered.empty:
+        empty_kpis = {
+            "avg_delivery_time": None,
+            "median_delivery_time": None,
+            "late_rate": None,
+            "avg_freight": None,
+            "total_shipping_cost": None,
+            "shipping_cost_share": None,
+            "total_profit_after_shipping": None,
+            "profit_margin_after_shipping": None,
+        }
+        return {
+            "kpis": empty_kpis,
+            "delivery_distribution": pd.DataFrame(),
+            "delivery_by_state": pd.DataFrame(),
+            "profit_by_state": pd.DataFrame(),
+        }
+
+    # ===== BỔ SUNG CỘT COST/PROFIT (nếu chưa có) =====
+    if "shipping_cost" not in delivered.columns:
+        delivered["shipping_cost"] = delivered["freight_total"].fillna(0)
+    if "product_revenue" not in delivered.columns:
+        delivered["product_revenue"] = delivered["price_total"].fillna(0)
+    if "profit_after_shipping" not in delivered.columns:
+        delivered["profit_after_shipping"] = (
+            delivered["product_revenue"] - delivered["shipping_cost"]
+        )
+    if "revenue" not in delivered.columns:
+        delivered["revenue"] = (
+            delivered["price_total"].fillna(0) + delivered["freight_total"].fillna(0)
+        )
+
+    # ===== KPI DELIVERY =====
     avg_delivery_time = delivered["delivery_time_days"].mean()
     median_delivery_time = delivered["delivery_time_days"].median()
     late_rate = delivered["is_late"].mean()  # 0–1
     avg_freight = delivered["freight_total"].mean()
 
+    total_revenue = delivered["revenue"].sum()
+    total_shipping_cost = delivered["shipping_cost"].sum()
+    total_profit_after_shipping = delivered["profit_after_shipping"].sum()
+
+    shipping_cost_share = (
+        total_shipping_cost / total_revenue if total_revenue > 0 else np.nan
+    )
+    profit_margin_after_shipping = (
+        total_profit_after_shipping / total_revenue if total_revenue > 0 else np.nan
+    )
+
     kpis = {
-        "avg_delivery_time": float(avg_delivery_time) if not np.isnan(avg_delivery_time) else None,
-        "median_delivery_time": float(median_delivery_time) if not np.isnan(median_delivery_time) else None,
-        "late_rate": float(late_rate) if not np.isnan(late_rate) else None,
-        "avg_freight": float(avg_freight) if not np.isnan(avg_freight) else None,
+        "avg_delivery_time": float(avg_delivery_time),
+        "median_delivery_time": float(median_delivery_time),
+        "late_rate": float(late_rate),
+        "avg_freight": float(avg_freight),
+        "total_shipping_cost": float(total_shipping_cost),
+        "shipping_cost_share": float(shipping_cost_share)
+        if not np.isnan(shipping_cost_share)
+        else None,
+        "total_profit_after_shipping": float(total_profit_after_shipping),
+        "profit_margin_after_shipping": float(profit_margin_after_shipping)
+        if not np.isnan(profit_margin_after_shipping)
+        else None,
     }
 
     # Histogram data
     delivery_distribution = delivered[["delivery_time_days"]].copy()
 
-    # Delivery by state
+    # Delivery by state (time & late)
     delivery_by_state = (
         delivered.groupby("customer_state", as_index=False)
         .agg(
@@ -385,11 +463,27 @@ def get_delivery_data(start_date=None, end_date=None, states=None):
         .sort_values("avg_delivery_time", ascending=False)
     )
 
+    # Cost & profit by state
+    profit_by_state = (
+        delivered.groupby("customer_state", as_index=False)
+        .agg(
+            revenue=("revenue", "sum"),
+            shipping_cost=("shipping_cost", "sum"),
+            profit_after_shipping=("profit_after_shipping", "sum"),
+        )
+    )
+    profit_by_state["profit_margin_after_shipping"] = (
+        profit_by_state["profit_after_shipping"] / profit_by_state["revenue"]
+    )
+
     return {
         "kpis": kpis,
         "delivery_distribution": delivery_distribution,
         "delivery_by_state": delivery_by_state,
+        "profit_by_state": profit_by_state,
     }
+
+
 
 
 

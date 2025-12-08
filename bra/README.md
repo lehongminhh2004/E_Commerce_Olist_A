@@ -122,7 +122,7 @@ Phân tích mối liên hệ giữa giao trễ và review score.
 
 ### 2. Chạy app
 
-    streamlit run app.py
+    python -m streamlit run app.py
 
 ### 3. Truy cập
 
